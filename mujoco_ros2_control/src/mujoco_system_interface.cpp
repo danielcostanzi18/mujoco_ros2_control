@@ -189,11 +189,15 @@ std::vector<std::string> get_joint_actuator_names(const std::string& joint_name,
     {
       if (joint.name == joint_name)
       {
-        // A MuJoCo actuator/joint sharing the joint name takes precedence: this is a direct 1:1 mapping
+        // The joint is covered by a transmission and also has a same-named MuJoCo actuator/joint, so both the
+        // transmission and the direct name match claim it. The values are always moved by the transmission (see
+        // actuator_state_to_joint_state() / joint_command_to_actuator_command(), where the direct copy is applied
+        // first and the transmission overwrites it). Only the control mode is applied to the same-named actuator
+        // alone, which is what this early return selects.
         if (get_actuator_id(joint_name, mj_model) != -1)
         {
-          RCLCPP_INFO(rclcpp::get_logger("MujocoSystemInterface"), "Found direct actuator match for joint '%s'",
-                      joint_name.c_str());
+          RCLCPP_INFO(rclcpp::get_logger("MujocoSystemInterface"), "Joint '%s' is driven by transmission '%s'",
+                      joint_name.c_str(), transmission.name.c_str());
           return { joint_name };
         }
         // Otherwise the joint is driven through the transmission: it maps to all the transmission's actuators
@@ -1118,7 +1122,8 @@ hardware_interface::return_type MujocoSystemInterface::write(const rclcpp::Time&
 
 void MujocoSystemInterface::actuator_state_to_joint_state()
 {
-  // Copy state for every joint that does not have a transmission
+  // Seed the passthrough from the direct name match. This is the only source for a joint with no
+  // transmission; for a joint that has one, the transmission overwrites it below.
   for (auto& joint : urdf_joint_data_)
   {
     std::for_each(mujoco_actuator_data_.begin(), mujoco_actuator_data_.end(), [&](auto& actuator_interface) {
@@ -1147,7 +1152,21 @@ void MujocoSystemInterface::actuator_state_to_joint_state()
 
 void MujocoSystemInterface::joint_command_to_actuator_command()
 {
-  // Transmissions
+  // Seed the passthrough from the direct name match. This is the only source for a joint with no
+  // transmission; for a joint that has one, the transmission overwrites it below.
+  for (auto& joint : urdf_joint_data_)
+  {
+    std::for_each(mujoco_actuator_data_.begin(), mujoco_actuator_data_.end(), [&](auto& actuator_interface) {
+      if (actuator_interface.joint_name == joint.name && actuator_interface.actuator_type != ActuatorType::PASSIVE)
+      {
+        actuator_interface.position_interface.transmission_passthrough_ = joint.position_interface.command_;
+        actuator_interface.velocity_interface.transmission_passthrough_ = joint.velocity_interface.command_;
+        actuator_interface.effort_interface.transmission_passthrough_ = joint.effort_interface.command_;
+      }
+    });
+  }
+
+  // Use transmission to transform joint command to actuator space
   std::for_each(urdf_joint_data_.begin(), urdf_joint_data_.end(),
                 [](auto& joint_interface) { joint_interface.copy_command_to_transmission(); });
 
@@ -1158,20 +1177,6 @@ void MujocoSystemInterface::joint_command_to_actuator_command()
   // set the commands to the MuJoCo actuators
   std::for_each(mujoco_actuator_data_.begin(), mujoco_actuator_data_.end(),
                 [](auto& actuator_interface) { actuator_interface.copy_command_from_transmission(); });
-
-  // If the actuator name and joint name is same (which is the case for non transmission joints), we need to copy
-  // the command from joint to actuator here as there is no transmission instance to do that.
-  for (auto& joint : urdf_joint_data_)
-  {
-    std::for_each(mujoco_actuator_data_.begin(), mujoco_actuator_data_.end(), [&](auto& actuator_interface) {
-      if (actuator_interface.joint_name == joint.name && actuator_interface.actuator_type != ActuatorType::PASSIVE)
-      {
-        actuator_interface.position_interface.command_ = joint.position_interface.command_;
-        actuator_interface.velocity_interface.command_ = joint.velocity_interface.command_;
-        actuator_interface.effort_interface.command_ = joint.effort_interface.command_;
-      }
-    });
-  }
 }
 
 bool MujocoSystemInterface::register_mujoco_actuators()
