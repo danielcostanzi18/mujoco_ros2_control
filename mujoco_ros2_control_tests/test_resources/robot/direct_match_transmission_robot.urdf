@@ -1,13 +1,7 @@
 <?xml version="1.0"?>
 <!--
-  Regression case for a joint that is BOTH driven by a same-named MuJoCo actuator and listed in a
-  <transmission>. Both the transmission and the direct name-match copy claim this joint, so the
-  outcome depends on which of the two is applied last.
-
-  Both directions must agree. They apply the direct copy first and let the transmission overwrite
-  it, so a joint commanded to X drives its actuator to X * mechanical_reduction and reads back X.
-  Before the fix the command bypassed the transmission while the state went through it, leaving a
-  permanent X/2 offset that a controller with state tolerances could never close.
+  Regression fixture: joint 'direct_joint' is both driven by a same-named MuJoCo actuator and
+  listed in a <transmission> below. See direct_match_transmission_launch_test.py.
 -->
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="direct_match_transmission_robot">
   <xacro:arg name="headless" default="true"/>

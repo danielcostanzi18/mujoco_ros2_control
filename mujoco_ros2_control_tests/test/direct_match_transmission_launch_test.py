@@ -15,20 +15,10 @@
 # limitations under the License.
 
 """
-Regression test: a joint that is both driven by a same-named MuJoCo actuator and listed in a
-<transmission> is claimed by two mechanisms, and both directions must resolve it the same way.
-
-The MJCF names its position actuator 'direct_joint', the same as the joint it drives, so the
-direct name-match copy applies. The URDF also declares a SimpleTransmission over that joint with
-mechanical_reduction 2.0, so the transmission applies too.
-
-Both actuator_state_to_joint_state() and joint_command_to_actuator_command() apply the direct copy
-first and let the transmission overwrite it, so the transmission wins in both directions: a joint
-commanded to 0.05 drives its actuator to 0.10 and reads back 0.05.
-
-Before the fix the command path ran its direct copy last, so the command reached the actuator
-unscaled (0.05) while the state still came back through the transmission (0.025) -- a permanent
--0.025 offset that a controller with state tolerances could never close.
+Regression test: joint 'direct_joint' has both a same-named MuJoCo actuator and a SimpleTransmission
+(mechanical_reduction 2.0). The transmission must win in both directions, so a joint commanded to
+0.05 drives its actuator to 0.10 and reads back 0.05. See actuator_state_to_joint_state() and
+joint_command_to_actuator_command() in mujoco_system_interface.cpp for why.
 """
 
 import os
@@ -54,7 +44,6 @@ TARGET = 0.05
 MECHANICAL_REDUCTION = 2.0
 # The actuator is driven to the joint command scaled by the reduction.
 EXPECTED_ACTUATOR = TARGET * MECHANICAL_REDUCTION
-# Far tighter than the offset the old ordering produced (TARGET - TARGET / MECHANICAL_REDUCTION).
 TOLERANCE = 0.002
 
 
@@ -148,10 +137,7 @@ class TestTransmissionAppliedWhenJointAlsoDirectlyMatched(unittest.TestCase):
         actuator_position = self.get_joint_value(self._latest_actuator_js, "position", JOINT)
         self.assertTrue(
             reached_actuator,
-            f"MuJoCo actuator '{JOINT}' is at {actuator_position}, expected "
-            f"{EXPECTED_ACTUATOR} ({TARGET} * {MECHANICAL_REDUCTION}). A value near {TARGET} means the command "
-            "bypassed the transmission, i.e. the direct-copy fallback in joint_command_to_actuator_command() ran "
-            "after the transmission instead of before it.",
+            f"MuJoCo actuator '{JOINT}' is at {actuator_position}, expected {EXPECTED_ACTUATOR}",
         )
 
         # ...and the state path applies it too, so the round trip closes on the joint side.
@@ -161,8 +147,5 @@ class TestTransmissionAppliedWhenJointAlsoDirectlyMatched(unittest.TestCase):
             joint_position,
             TARGET,
             delta=TOLERANCE,
-            msg=(
-                f"Joint state for '{JOINT}' is {joint_position}, expected {TARGET}. Command and feedback must "
-                "agree: both directions apply the direct copy first and let the transmission overwrite it."
-            ),
+            msg=f"Joint state for '{JOINT}' is {joint_position}, expected {TARGET}",
         )

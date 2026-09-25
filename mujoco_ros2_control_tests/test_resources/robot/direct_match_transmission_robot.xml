@@ -13,8 +13,7 @@
   </worldbody>
 
   <actuator>
-    <!-- Deliberately named after the joint it drives. This is the direct 1:1 mapping that must
-         take precedence over the <transmission> declared in the URDF. -->
+    <!-- Named after the joint it drives, so it also direct-matches (see the URDF). -->
     <position name="direct_joint" joint="direct_joint" kp="2000" dampratio="1" ctrlrange="-0.5 0.5"/>
   </actuator>
 </mujoco>
