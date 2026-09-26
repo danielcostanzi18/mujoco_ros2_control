@@ -1119,7 +1119,7 @@ hardware_interface::return_type MujocoSystemInterface::write(const rclcpp::Time&
 
 template <typename Fn>
 void for_each_matched_joint_actuator(std::vector<URDFJointData>& joints, std::vector<MuJoCoActuatorData>& actuators,
-                                    Fn&& fn)
+                                     Fn&& fn)
 {
   for (auto& joint : joints)
   {
