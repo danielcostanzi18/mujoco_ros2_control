@@ -1,7 +1,7 @@
 <mujoco model="direct_match_transmission_robot">
   <compiler angle="radian"/>
   <!-- Gravity off: the servo must settle exactly on the command so the test can assert an
-       exact 1:1 mapping rather than a tolerance that could hide a reduction factor. -->
+       exact 1:2 mapping rather than a tolerance that could hide a reduction factor. -->
   <option gravity="0 0 0" timestep="0.001"/>
 
   <worldbody>
