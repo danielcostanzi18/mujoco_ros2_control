@@ -1,0 +1,9 @@
+<library path="relative_transmission">
+  <class name="mujoco_ros2_control_tests/RelativeTransmission"
+         type="mujoco_ros2_control_tests::RelativeTransmissionLoader"
+         base_class_type="transmission_interface::TransmissionLoader">
+    <description>
+      Test transmission: one joint measured relative to a read-only reference actuator.
+    </description>
+  </class>
+</library>

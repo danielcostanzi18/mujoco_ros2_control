@@ -11,6 +11,7 @@ if(BUILD_TESTING)
   find_package(rclcpp REQUIRED)
   find_package(sensor_msgs REQUIRED)
   find_package(std_msgs REQUIRED)
+  find_package(transmission_interface REQUIRED)
   find_package(mujoco_ros2_control REQUIRED)
   find_package(mujoco_ros2_control_msgs REQUIRED)
   find_package(mujoco_ros2_control_plugins REQUIRED)
@@ -29,6 +30,22 @@ if(BUILD_TESTING)
 
   pluginlib_export_plugin_description_file(
     mujoco_ros2_control_plugins src/test_plugin.xml
+  )
+
+  # A transmission with a read_only actuator, which no transmission of transmission_interface supports.
+  add_library(relative_transmission SHARED src/relative_transmission.cpp)
+  target_link_libraries(relative_transmission
+    hardware_interface::hardware_interface
+    pluginlib::pluginlib
+    transmission_interface::transmission_interface
+  )
+
+  install(TARGETS relative_transmission
+    LIBRARY DESTINATION lib
+  )
+
+  pluginlib_export_plugin_description_file(
+    transmission_interface src/relative_transmission.xml
   )
 
   # End-to-end check that reset_world and read() dispatch on_reset()/update_read()/update_write() to loaded plugins.
@@ -88,6 +105,13 @@ if(BUILD_TESTING)
   add_ros_isolated_launch_test(test/direct_match_transmission_launch_test.py
     TIMEOUT 75
   )
+
+  # ActuatorInfo::read_only is not available on Humble
+  if(hardware_interface_VERSION VERSION_GREATER_EQUAL 3)
+    add_ros_isolated_launch_test(test/read_only_actuator_launch_test.py
+      TIMEOUT 75
+    )
+  endif()
 endif()
 
 ament_package()

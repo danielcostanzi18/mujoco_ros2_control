@@ -183,6 +183,19 @@ int get_actuator_id(const std::string& actuator_name, const mjModel* mj_model)
 }
 
 /**
+ * @brief Whether a transmission only reads this actuator, which is commanded from elsewhere (ActuatorInfo::read_only).
+ * Always false on Humble, whose ros2_control doesn't have the attribute.
+ */
+bool is_read_only([[maybe_unused]] const hardware_interface::ActuatorInfo& actuator)
+{
+#if ROS_DISTRO_HUMBLE
+  return false;
+#else
+  return actuator.read_only;
+#endif
+}
+
+/**
  * @brief Get the corresponding actuator names for a given joint name used in the transmissions.
  * @param joint_name The name of the joint.
  * @param hardware_info The hardware information containing transmissions.
@@ -207,11 +220,15 @@ std::vector<std::string> get_joint_actuator_names(const std::string& joint_name,
                       joint_name.c_str(), transmission.name.c_str());
           return { joint_name };
         }
-        // Otherwise the joint is driven through the transmission: it maps to all the transmission's actuators
+        // Otherwise the joint is driven through the transmission: it maps to the transmission's actuators, except
+        // the read_only ones, which the transmission only reads and which are commanded from elsewhere
         std::vector<std::string> actuator_names;
         for (const auto& actuator : transmission.actuators)
         {
-          actuator_names.push_back(actuator.name);
+          if (!is_read_only(actuator))
+          {
+            actuator_names.push_back(actuator.name);
+          }
         }
         RCLCPP_INFO(rclcpp::get_logger("MujocoSystemInterface"), "%s",
                     fmt::format("Found transmission for joint '{}', mapping to actuators : [{}]", joint_name,

@@ -1,0 +1,22 @@
+controller_manager:
+  ros__parameters:
+    update_rate: 500
+
+joint_state_broadcaster:
+  ros__parameters:
+    update_rate: 50
+    type: joint_state_broadcaster/JointStateBroadcaster
+
+reference_position_controller:
+  ros__parameters:
+    type: forward_command_controller/ForwardCommandController
+    interface_name: position
+    joints:
+      - reference_joint
+
+relative_effort_controller:
+  ros__parameters:
+    type: forward_command_controller/ForwardCommandController
+    interface_name: effort
+    joints:
+      - relative_joint

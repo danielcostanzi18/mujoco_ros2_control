@@ -43,6 +43,7 @@
   <test_depend>rviz2</test_depend>
   <test_depend>sensor_msgs</test_depend>
   <test_depend>std_msgs</test_depend>
+  <test_depend>transmission_interface</test_depend>
   <test_depend>urdfdom</test_depend>
   <test_depend>urdfdom_py</test_depend>
   <test_depend>xacro</test_depend>

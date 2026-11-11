@@ -75,6 +75,8 @@ Joints
 Joints in the ``ros2_control`` interface are mapped to actuators defined in the MJCF, either directly or as transmission interfaces.
 If a joint is listed in a ``<transmission>`` and also has an MJCF actuator driving a joint of the same name, the transmission is applied to both commands and states.
 For example, a ``SimpleTransmission`` with ``mechanical_reduction`` 2.0 drives the actuator to twice the joint command and reports half the actuator position as the joint state.
+A transmission actuator marked ``read_only="true"`` is one the transmission only reads, for instance a coupling input commanded through another transmission.
+Claiming the transmission's joints does not change the control mode of a read-only actuator (requires a ``ros2_control`` version with ``ActuatorInfo::read_only``, not available on Humble).
 The system supports different joint control modes based on the actuator type and available command interfaces.
 
 MuJoCo's PD-level ``ctrl`` input is used for direct position, velocity, or effort control.
