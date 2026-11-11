@@ -106,6 +106,10 @@ if(BUILD_TESTING)
     TIMEOUT 75
   )
 
+  add_ros_isolated_launch_test(test/transmission_actuators_launch_test.py
+    TIMEOUT 75
+  )
+
   # ActuatorInfo::read_only is not available on Humble
   if(hardware_interface_VERSION VERSION_GREATER_EQUAL 3)
     add_ros_isolated_launch_test(test/read_only_actuator_launch_test.py

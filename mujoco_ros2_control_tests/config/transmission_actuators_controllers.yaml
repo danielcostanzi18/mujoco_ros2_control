@@ -1,0 +1,37 @@
+controller_manager:
+  ros__parameters:
+    update_rate: 500
+
+joint_state_broadcaster:
+  ros__parameters:
+    update_rate: 50
+    type: joint_state_broadcaster/JointStateBroadcaster
+
+joint1_position_controller:
+  ros__parameters:
+    type: forward_command_controller/ForwardCommandController
+    interface_name: position
+    joints:
+      - joint1
+
+actuator1_position_controller:
+  ros__parameters:
+    type: forward_command_controller/ForwardCommandController
+    interface_name: position
+    joints:
+      - actuator1
+
+joint2_position_controller:
+  ros__parameters:
+    type: forward_command_controller/ForwardCommandController
+    interface_name: position
+    joints:
+      - joint2
+
+differential_position_controller:
+  ros__parameters:
+    type: forward_command_controller/ForwardCommandController
+    interface_name: position
+    joints:
+      - joint2
+      - joint3

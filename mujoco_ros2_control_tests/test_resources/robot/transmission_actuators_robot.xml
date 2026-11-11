@@ -1,0 +1,30 @@
+<mujoco model="transmission_actuators_robot">
+  <compiler angle="radian"/>
+  <!-- Gravity off: the servos must settle exactly on the command so the test can assert exact positions. -->
+  <option gravity="0 0 0" timestep="0.001"/>
+
+  <!-- The MuJoCo joints carry the names of the transmission actuators, as in the transmissions demo. -->
+  <worldbody>
+    <body name="link1" pos="0 -0.2 0">
+      <inertial pos="0 0 0" mass="0.2" diaginertia="0.001 0.001 0.001"/>
+      <joint name="actuator1" type="slide" axis="1 0 0" range="-0.5 0.5" damping="1.0"/>
+      <geom name="link1_geom" type="box" size="0.02 0.02 0.02" rgba="0.8 0.4 0.1 1"/>
+    </body>
+    <body name="link2" pos="0 0 0">
+      <inertial pos="0 0 0" mass="0.2" diaginertia="0.001 0.001 0.001"/>
+      <joint name="actuator2" type="slide" axis="1 0 0" range="-0.5 0.5" damping="1.0"/>
+      <geom name="link2_geom" type="box" size="0.02 0.02 0.02" rgba="0.1 0.4 0.8 1"/>
+    </body>
+    <body name="link3" pos="0 0.2 0">
+      <inertial pos="0 0 0" mass="0.2" diaginertia="0.001 0.001 0.001"/>
+      <joint name="actuator3" type="slide" axis="1 0 0" range="-0.5 0.5" damping="1.0"/>
+      <geom name="link3_geom" type="box" size="0.02 0.02 0.02" rgba="0.1 0.8 0.4 1"/>
+    </body>
+  </worldbody>
+
+  <actuator>
+    <position name="actuator1" joint="actuator1" kp="2000" dampratio="1" ctrlrange="-0.5 0.5"/>
+    <position name="actuator2" joint="actuator2" kp="2000" dampratio="1" ctrlrange="-0.5 0.5"/>
+    <position name="actuator3" joint="actuator3" kp="2000" dampratio="1" ctrlrange="-0.5 0.5"/>
+  </actuator>
+</mujoco>

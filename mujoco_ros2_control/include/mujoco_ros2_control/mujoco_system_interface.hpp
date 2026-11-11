@@ -20,6 +20,7 @@
 #pragma once
 
 #include <memory>
+#include <set>
 #include <string>
 #include <thread>
 #include <vector>
@@ -112,6 +113,14 @@ public:
   hardware_interface::CallbackReturn on_activate(const rclcpp_lifecycle::State& previous_state) override;
   hardware_interface::CallbackReturn on_deactivate(const rclcpp_lifecycle::State& previous_state) override;
 
+  /**
+   * @brief With `export_transmission_actuators`, refuses a switch that would leave a transmission unable to apply its
+   * commands: a joint and one of its actuators commanded at once (the transmission would override the actuator), or a
+   * joint commanded while another joint of the same transmission is not (that one feeds NaN into the transmission).
+   */
+  hardware_interface::return_type prepare_command_mode_switch(const std::vector<std::string>& start_interfaces,
+                                                              const std::vector<std::string>& stop_interfaces) override;
+
   hardware_interface::return_type perform_command_mode_switch(const std::vector<std::string>& start_interfaces,
                                                               const std::vector<std::string>& stop_interfaces) override;
 
@@ -172,16 +181,19 @@ private:
   /// One exported interface: the double it mirrors, and where it comes from.
   struct InterfaceBinding
   {
-    std::string prefix;          ///< joint or sensor name
+    std::string prefix;          ///< joint, actuator or sensor name
     std::string interface_name;  ///< exported interface name, e.g. hardware_interface::HW_IF_POSITION
-    double* value;               ///< storage inside urdf_joint_data_ / *_sensor_data_
+    double* value;               ///< storage inside urdf_joint_data_ / mujoco_actuator_data_ / *_sensor_data_
   };
 
   /// Enumerates every state interface to export, in export order.
   std::vector<InterfaceBinding> collect_state_interface_bindings();
 
-  /// Enumerates every command interface to export, in export order.
+  /// Enumerates every joint command interface to export, in export order.
   std::vector<InterfaceBinding> collect_command_interface_bindings();
+
+  /// Enumerates the command interfaces of the exported transmission actuators, in export order.
+  std::vector<InterfaceBinding> collect_actuator_command_interface_bindings();
 
 #if !ROS_DISTRO_HUMBLE
   /// A live handle paired with the double it mirrors; built once in on_init and kept alive here.
@@ -194,12 +206,13 @@ private:
 
   std::vector<HandleBinding<hardware_interface::StateInterface>> state_bindings_;
   std::vector<HandleBinding<hardware_interface::CommandInterface>> command_bindings_;
+  std::vector<HandleBinding<hardware_interface::CommandInterface>> actuator_command_bindings_;
 
   /// Builds one HandleBinding per InterfaceBinding, seeding each handle from the current double.
   template <typename InterfaceT>
   static std::vector<HandleBinding<InterfaceT>> build_bindings(const std::vector<InterfaceBinding>& bindings);
 
-  /// Builds state_bindings_/command_bindings_ from collect_*_interface_bindings().
+  /// Builds state_bindings_/command_bindings_/actuator_command_bindings_ from collect_*_interface_bindings().
   void build_interface_handles();
 
   /// Pushes the mirrored doubles into their exported handles; wait_for_lock controls blocking.
@@ -235,6 +248,24 @@ private:
    * specifies the transmission ratios between joints and physical actuators.
    */
   bool register_transmissions(const hardware_interface::HardwareInfo& info);
+
+  /**
+   * @brief With `export_transmission_actuators`, collects the transmission actuators to export as their own
+   * state/command interfaces next to the joints, the way a real robot's hardware interface exposes its motors.
+   * @return false if an actuator can't be exported: it is named like a ros2_control joint, which already exports that
+   * name, or it isn't found among the MuJoCo actuators.
+   */
+  bool register_exported_actuators(const hardware_interface::HardwareInfo& info);
+
+  /**
+   * @brief joint_command_to_actuator_command(), optionally passing only the commands that controllers claimed.
+   *
+   * @param claimed_commands_only Only the command of each joint's active control mode goes into the transmissions,
+   * the rest as NaN, and an actuator keeps its own command wherever its transmission yields NaN. write() uses it with
+   * `export_transmission_actuators`, so that a controller can command an exported transmission actuator directly while
+   * the joints mapped onto it are idle. Initialization doesn't, so that the initial joint positions reach the actuators.
+   */
+  void joint_command_to_actuator_command(bool claimed_commands_only);
 
   bool initialize_initial_positions(const hardware_interface::HardwareInfo& info);
 
@@ -406,6 +437,13 @@ private:
   // Transmission instances
   std::unique_ptr<pluginlib::ClassLoader<transmission_interface::TransmissionLoader>> transmission_loader_ = nullptr;
   std::vector<std::shared_ptr<transmission_interface::Transmission>> transmission_instances_;
+
+  // Hardware parameter `export_transmission_actuators`
+  bool export_transmission_actuators_{ false };
+  // Transmission actuators exported as their own interfaces, pointing into mujoco_actuator_data_
+  std::vector<MuJoCoActuatorData*> exported_actuators_;
+  // Command interfaces currently claimed by controllers, as "<name>/<interface>"
+  std::set<std::string> claimed_command_interfaces_;
 
   // Plugin loader and instances
   std::unique_ptr<pluginlib::ClassLoader<mujoco_ros2_control_plugins::MuJoCoROS2ControlPluginBase>> plugin_loader_ =

@@ -1,0 +1,13 @@
+<mujoco model="transmission_actuators_scene">
+  <include file="../robot/transmission_actuators_robot.xml"/>
+
+  <statistic center="0 0 0" extent="0.5"/>
+
+  <visual>
+    <headlight diffuse="0.6 0.6 0.6" ambient="0.1 0.1 0.1" specular="0 0 0"/>
+  </visual>
+
+  <worldbody>
+    <light pos="0 0 2" dir="0 0 -1" directional="true"/>
+  </worldbody>
+</mujoco>

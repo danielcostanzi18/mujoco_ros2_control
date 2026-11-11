@@ -24,6 +24,8 @@
 #include <hardware_interface/types/hardware_interface_type_values.hpp>
 #include "control_toolbox/pid_ros.hpp"
 
+#include <cmath>
+#include <limits>
 #include <random>
 #include <string>
 #include <vector>
@@ -131,6 +133,26 @@ struct MuJoCoActuatorData
     effort_interface.command_ = effort_interface.transmission_passthrough_;
   }
 
+  /// Takes the commands a transmission produced and keeps the actuator's own command where it produced NaN.
+  void copy_finite_command_from_transmission()
+  {
+    for (auto* interface : { &position_interface, &velocity_interface, &effort_interface })
+    {
+      if (std::isfinite(interface->transmission_passthrough_))
+      {
+        interface->command_ = interface->transmission_passthrough_;
+      }
+    }
+  }
+
+  /// Sets the passthrough to NaN, i.e. no command from the transmissions until one writes it.
+  void clear_transmission()
+  {
+    position_interface.transmission_passthrough_ = std::numeric_limits<double>::quiet_NaN();
+    velocity_interface.transmission_passthrough_ = std::numeric_limits<double>::quiet_NaN();
+    effort_interface.transmission_passthrough_ = std::numeric_limits<double>::quiet_NaN();
+  }
+
   void copy_command_to_state()
   {
     position_interface.state_ = position_interface.command_;
@@ -182,6 +204,16 @@ struct URDFJointData
     position_interface.transmission_passthrough_ = position_interface.command_;
     velocity_interface.transmission_passthrough_ = velocity_interface.command_;
     effort_interface.transmission_passthrough_ = effort_interface.command_;
+  }
+
+  /// Passes only the command of the active control mode; the others, and all of them while the joint is not
+  /// commanded, go through as NaN.
+  void copy_claimed_command_to_transmission()
+  {
+    constexpr double nan = std::numeric_limits<double>::quiet_NaN();
+    position_interface.transmission_passthrough_ = is_position_control_enabled ? position_interface.command_ : nan;
+    velocity_interface.transmission_passthrough_ = is_velocity_control_enabled ? velocity_interface.command_ : nan;
+    effort_interface.transmission_passthrough_ = is_effort_control_enabled ? effort_interface.command_ : nan;
   }
 
   void copy_state_to_command()

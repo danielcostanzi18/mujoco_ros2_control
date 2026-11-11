@@ -41,6 +41,11 @@ Specify it in your URDF and point to a valid MJCF on launch:
        <!-- Optional: run the simulator without a GUI window. Defaults to false. -->
        <param name="headless">false</param>
 
+       <!-- Optional: also export the actuators of the <transmission>s as their own state and
+            command interfaces, next to the joints. Defaults to false.
+            See "Transmission Actuators" below. -->
+       <param name="export_transmission_actuators">false</param>
+
        <!-- Optional: name of a MuJoCo free joint whose odometry is published as a
             nav_msgs/Odometry message. -->
        <param name="odom_free_joint_name">floating_base_joint</param>
@@ -174,6 +179,27 @@ For instance,
 Note that a MuJoCo actuator has a single ``ctrl`` input, and there is no mechanism to inform a plugin that a command mode has changed.
 For this reason a joint driven by a plugin actuator must declare exactly one command interface; declaring more fails initialization with an error.
 Users should understand the limitations and handle their own plugin implementations accordingly.
+
+Transmission Actuators
+~~~~~~~~~~~~~~~~~~~~~~
+
+Hardware interfaces of real robots often expose the motors behind a transmission as well as the joints, so a controller can command either.
+Setting ``export_transmission_actuators`` to ``true`` does the same in simulation: every actuator named in a ``<transmission>`` gets
+``position``, ``velocity`` and ``effort`` state interfaces under its transmission name, plus the command interfaces its MuJoCo actuator
+supports when commanded directly (same rules as in the table above). An actuator named like a ``ros2_control`` joint,
+which already exports that name, fails initialization.
+
+The joint states keep coming from the transmissions, whichever side is commanded.
+Only the command of a joint's active control mode goes into its transmission, the others go in as ``NaN``,
+and an actuator keeps its own command wherever its transmission yields ``NaN``.
+A joint that no controller commands therefore leaves its actuators to whoever commands them directly.
+To keep that consistent, a controller switch is refused if it would
+
+* command a joint and one of the actuators of its transmission at the same time, or
+* command some joints of a transmission but not all of those with command interfaces.
+
+A ``read_only`` actuator (see `Joints`_) doesn't count as part of the transmissions that only read it: commanding it
+directly doesn't conflict with commanding their joints.
 
 Grippers and Mimic Joints
 --------------------------
