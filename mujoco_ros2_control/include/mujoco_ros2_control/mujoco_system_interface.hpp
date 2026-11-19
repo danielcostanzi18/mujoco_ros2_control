@@ -252,8 +252,8 @@ private:
   /**
    * @brief With `export_transmission_actuators`, collects the transmission actuators to export as their own
    * state/command interfaces next to the joints, the way a real robot's hardware interface exposes its motors.
-   * @return false if an actuator can't be exported: it is named like a ros2_control joint, which already exports that
-   * name, or it isn't found among the MuJoCo actuators.
+   * An actuator named like a ros2_control joint is left out: the joint already exports that name.
+   * @return false if an actuator can't be exported: it isn't found among the MuJoCo actuators.
    */
   bool register_exported_actuators(const hardware_interface::HardwareInfo& info);
 

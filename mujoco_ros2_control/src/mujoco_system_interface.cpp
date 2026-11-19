@@ -1052,6 +1052,14 @@ MujocoSystemInterface::prepare_command_mode_switch(const std::vector<std::string
     claimed.insert(interface.substr(0, interface.rfind('/')));
   }
 
+  // Only an exported actuator can be commanded directly. One that isn't (named like its joint, see
+  // register_exported_actuators()) shares its name with the joint, so a claim on that name is the joint's.
+  const auto commandable = [this](const hardware_interface::ActuatorInfo& actuator) {
+    return !is_read_only(actuator) &&
+           std::any_of(exported_actuators_.begin(), exported_actuators_.end(),
+                       [&actuator](const MuJoCoActuatorData* exported) { return exported->joint_name == actuator.name; });
+  };
+
   for (const auto& interface : start_interfaces)
   {
     const std::string resource = interface.substr(0, interface.rfind('/'));
@@ -1061,15 +1069,15 @@ MujocoSystemInterface::prepare_command_mode_switch(const std::vector<std::string
           std::any_of(transmission.joints.begin(), transmission.joints.end(),
                       [&resource](const hardware_interface::JointInfo& joint) { return joint.name == resource; });
       const bool is_actuator = std::any_of(transmission.actuators.begin(), transmission.actuators.end(),
-                                           [&resource](const hardware_interface::ActuatorInfo& actuator) {
-                                             return !is_read_only(actuator) && actuator.name == resource;
+                                           [&](const hardware_interface::ActuatorInfo& actuator) {
+                                             return commandable(actuator) && actuator.name == resource;
                                            });
 
       if (is_joint)
       {
         for (const auto& actuator : transmission.actuators)
         {
-          if (!is_read_only(actuator) && claimed.count(actuator.name) > 0)
+          if (commandable(actuator) && claimed.count(actuator.name) > 0)
           {
             RCLCPP_ERROR(get_logger(),
                          "Cannot command '%s' while actuator '%s' is commanded directly: transmission '%s' would "
@@ -2298,12 +2306,14 @@ bool MujocoSystemInterface::register_exported_actuators(const hardware_interface
   {
     for (const auto& actuator_info : transmission.actuators)
     {
+      // An actuator named like a ros2_control joint (e.g. a 1:1 SimpleTransmission of a gripper) can't have interfaces
+      // of its own: the joint already exports that name. It stays reachable through the joint.
       if (joint_hw_info_.count(actuator_info.name) > 0)
       {
-        RCLCPP_ERROR(get_logger(),
-                     "Cannot export actuator '%s' of transmission '%s': a ros2_control joint already has that name.",
-                     actuator_info.name.c_str(), transmission.name.c_str());
-        return false;
+        RCLCPP_INFO(get_logger(),
+                    "Not exporting actuator '%s' of transmission '%s': a ros2_control joint already has that name.",
+                    actuator_info.name.c_str(), transmission.name.c_str());
+        continue;
       }
       // Same lookup as register_transmissions()
       auto actuator_it = std::find_if(mujoco_actuator_data_.begin(), mujoco_actuator_data_.end(),
