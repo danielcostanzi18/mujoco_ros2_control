@@ -86,6 +86,8 @@ struct InterfaceData
  * @param mj_joint_type MuJoCo joint type as per mjModel->jnt_type.
  * @param mj_pos_adr MuJoCo position address in mjData->qpos.
  * @param mj_vel_adr MuJoCo velocity address in mjData->qvel.
+ * @param mj_tendon_id MuJoCo fixed tendon driven by the actuator, -1 if it drives a joint. The
+ *        actuator's state is then the tendon's, and mj_pos_adr / mj_vel_adr are unused.
  * @param mj_actuator_id MuJoCo actuator id as per mjModel->actuator_id.
  * @param is_position_control_enabled Boolean flag indicating if position control is enabled.
  * @param is_position_pid_control_enabled Boolean flag indicating if position PID control is enabled.
@@ -107,6 +109,7 @@ struct MuJoCoActuatorData
   int mj_joint_type = -1;
   int mj_pos_adr = -1;
   int mj_vel_adr = -1;
+  int mj_tendon_id = -1;
   int mj_actuator_id = -1;
 
   // Booleans record whether or not we should be writing commands to these interfaces

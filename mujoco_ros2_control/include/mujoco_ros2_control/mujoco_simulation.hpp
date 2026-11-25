@@ -307,6 +307,7 @@ public:
     std::vector<mjtNum> qvel;
     std::vector<mjtNum> act;
     std::vector<mjtNum> qfrc_actuator;
+    std::vector<mjtNum> actuator_force;
     std::vector<mjtNum> sensordata;
     std::vector<mjtNum> ctrl;
   };

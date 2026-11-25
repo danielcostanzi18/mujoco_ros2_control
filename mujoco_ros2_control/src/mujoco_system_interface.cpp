@@ -155,7 +155,8 @@ ActuatorType getActuatorType(const mjModel* mj_model, int mujoco_actuator_id)
 
 /**
  * @brief Get the MuJoCo actuator ID based on a name. First this method looks for a joint that matches the passed name,
- * and finds the actuator attached to it. If this doesn't exist, it will then look for the actuator with the passed name.
+ * and finds the actuator attached to it, then for a tendon the same way. If neither exists, it will then look for the
+ * actuator with the passed name.
  * @param actuator_name The name of the actuator.
  * @param mj_model Pointer to the MuJoCo model.
  * @return The actuator ID if found, otherwise -1.
@@ -169,6 +170,19 @@ int get_actuator_id(const std::string& actuator_name, const mjModel* mj_model)
     for (int i = 0; i < mj_model->nu; ++i)
     {
       if (mj_model->actuator_trntype[i] == mjTRN_JOINT && mj_model->actuator_trnid[2 * i] == joint_id)
+      {
+        return i;
+      }
+    }
+  }
+
+  // Then as a TENDON, the same way.
+  const int tendon_id = mj_name2id(mj_model, mjtObj::mjOBJ_TENDON, actuator_name.c_str());
+  if (tendon_id != -1)
+  {
+    for (int i = 0; i < mj_model->nu; ++i)
+    {
+      if (mj_model->actuator_trntype[i] == mjTRN_TENDON && mj_model->actuator_trnid[2 * i] == tendon_id)
       {
         return i;
       }
@@ -193,6 +207,62 @@ bool is_read_only([[maybe_unused]] const hardware_interface::ActuatorInfo& actua
 #else
   return actuator.read_only;
 #endif
+}
+
+/**
+ * @brief Whether a tendon is a fixed tendon, i.e. a linear combination of joint coordinates.
+ */
+bool is_fixed_tendon(const mjModel* mj_model, int tendon_id)
+{
+  const int first = mj_model->tendon_adr[tendon_id];
+  const int last = first + mj_model->tendon_num[tendon_id];
+  return last > first && std::all_of(mj_model->wrap_type + first, mj_model->wrap_type + last,
+                                     [](int wrap_type) { return wrap_type == mjWRAP_JOINT; });
+}
+
+/**
+ * @brief Position of what the actuator drives: its joint's coordinate, or its fixed tendon's length.
+ * @param mj_model Pointer to the MuJoCo model.
+ * @param actuator The actuator.
+ * @param qpos Generalized positions to read from, mjData->qpos or a copy of it.
+ */
+double get_actuator_position(const mjModel* mj_model, const MuJoCoActuatorData& actuator, const mjtNum* qpos)
+{
+  if (actuator.mj_tendon_id == -1)
+  {
+    return qpos[actuator.mj_pos_adr];
+  }
+  // As MuJoCo computes it: the joints' coordinates weighted by their coefficients
+  const int first = mj_model->tendon_adr[actuator.mj_tendon_id];
+  const int last = first + mj_model->tendon_num[actuator.mj_tendon_id];
+  double length = 0.0;
+  for (int w = first; w < last; ++w)
+  {
+    length += mj_model->wrap_prm[w] * qpos[mj_model->jnt_qposadr[mj_model->wrap_objid[w]]];
+  }
+  return length;
+}
+
+/**
+ * @brief Velocity of what the actuator drives: its joint's, or its fixed tendon's.
+ * @param mj_model Pointer to the MuJoCo model.
+ * @param actuator The actuator.
+ * @param qvel Generalized velocities to read from, mjData->qvel or a copy of it.
+ */
+double get_actuator_velocity(const mjModel* mj_model, const MuJoCoActuatorData& actuator, const mjtNum* qvel)
+{
+  if (actuator.mj_tendon_id == -1)
+  {
+    return qvel[actuator.mj_vel_adr];
+  }
+  const int first = mj_model->tendon_adr[actuator.mj_tendon_id];
+  const int last = first + mj_model->tendon_num[actuator.mj_tendon_id];
+  double velocity = 0.0;
+  for (int w = first; w < last; ++w)
+  {
+    velocity += mj_model->wrap_prm[w] * qvel[mj_model->jnt_dofadr[mj_model->wrap_objid[w]]];
+  }
+  return velocity;
 }
 
 /**
@@ -1259,6 +1329,7 @@ hardware_interface::return_type MujocoSystemInterface::read(const rclcpp::Time& 
     to_data(mj_data_read_->qvel, control_state_.qvel);
     to_data(mj_data_read_->act, control_state_.act);
     to_data(mj_data_read_->qfrc_actuator, control_state_.qfrc_actuator);
+    to_data(mj_data_read_->actuator_force, control_state_.actuator_force);
     to_data(mj_data_read_->sensordata, control_state_.sensordata);
     to_data(mj_data_read_->ctrl, control_state_.ctrl);
     for (auto& plugin : plugin_instances_)
@@ -1269,6 +1340,7 @@ hardware_interface::return_type MujocoSystemInterface::read(const rclcpp::Time& 
     from_data(control_state_.qvel, mj_data_read_->qvel);
     from_data(control_state_.act, mj_data_read_->act);
     from_data(control_state_.qfrc_actuator, mj_data_read_->qfrc_actuator);
+    from_data(control_state_.actuator_force, mj_data_read_->actuator_force);
     from_data(control_state_.sensordata, mj_data_read_->sensordata);
     from_data(control_state_.ctrl, mj_data_read_->ctrl);
   }
@@ -1278,11 +1350,23 @@ hardware_interface::return_type MujocoSystemInterface::read(const rclcpp::Time& 
   actuator_state_msg_.position.clear();
   actuator_state_msg_.velocity.clear();
   actuator_state_msg_.effort.clear();
+  const mjModel* mj_model = simulation_->model();
   for (auto& actuator_state : mujoco_actuator_data_)
   {
-    actuator_state.position_interface.state_ = control_state_.qpos[actuator_state.mj_pos_adr];
-    actuator_state.velocity_interface.state_ = control_state_.qvel[actuator_state.mj_vel_adr];
-    actuator_state.effort_interface.state_ = control_state_.qfrc_actuator[actuator_state.mj_vel_adr];
+    actuator_state.position_interface.state_ =
+        get_actuator_position(mj_model, actuator_state, control_state_.qpos.data());
+    actuator_state.velocity_interface.state_ =
+        get_actuator_velocity(mj_model, actuator_state, control_state_.qvel.data());
+    if (actuator_state.mj_tendon_id == -1)
+    {
+      actuator_state.effort_interface.state_ = control_state_.qfrc_actuator[actuator_state.mj_vel_adr];
+    }
+    else
+    {
+      // On a tendon: the force this actuator applies along it
+      actuator_state.effort_interface.state_ = mj_model->actuator_gear[6 * actuator_state.mj_actuator_id] *
+                                               control_state_.actuator_force[actuator_state.mj_actuator_id];
+    }
     actuator_state_msg_.position.push_back(actuator_state.position_interface.state_);
     actuator_state_msg_.velocity.push_back(actuator_state.velocity_interface.state_);
     actuator_state_msg_.effort.push_back(actuator_state.effort_interface.state_);
@@ -1460,7 +1544,8 @@ hardware_interface::return_type MujocoSystemInterface::write(const rclcpp::Time&
     }
     else if (actuator.is_position_pid_control_enabled)
     {
-      const double error = actuator.position_interface.command_ - control_state_.qpos[actuator.mj_pos_adr];
+      const double error = actuator.position_interface.command_ -
+                           get_actuator_position(simulation_->model(), actuator, control_state_.qpos.data());
       control_data->ctrl[actuator.mj_actuator_id] = pid_compute_command(actuator.pos_pid, error, period);
     }
     else if (actuator.is_velocity_control_enabled)
@@ -1469,7 +1554,8 @@ hardware_interface::return_type MujocoSystemInterface::write(const rclcpp::Time&
     }
     else if (actuator.is_velocity_pid_control_enabled)
     {
-      const double error = actuator.velocity_interface.command_ - control_state_.qvel[actuator.mj_vel_adr];
+      const double error = actuator.velocity_interface.command_ -
+                           get_actuator_velocity(simulation_->model(), actuator, control_state_.qvel.data());
       control_data->ctrl[actuator.mj_actuator_id] = pid_compute_command(actuator.vel_pid, error, period);
     }
     else if (actuator.is_effort_control_enabled)
@@ -1670,11 +1756,21 @@ bool MujocoSystemInterface::register_mujoco_actuators()
         actuator_data.joint_name = std::string(act_name);
         RCLCPP_INFO(get_logger(), "Registering MuJoCo tendon actuator '%s' using joint state", act_name);
       }
+      else if (is_fixed_tendon(simulation_->model(), target_id) &&
+               mj_id2name(simulation_->model(), mjOBJ_TENDON, target_id))
+      {
+        // Otherwise an actuator on a fixed tendon goes by the tendon's name and has the tendon's state, so it can be
+        // a transmission's actuator, e.g. one of the two motors of a differential
+        actuator_data.joint_name = std::string(mj_id2name(simulation_->model(), mjOBJ_TENDON, target_id));
+        actuator_data.mj_tendon_id = target_id;
+        RCLCPP_INFO(get_logger(), "Registering MuJoCo actuator '%s' for fixed tendon '%s'", act_name,
+                    actuator_data.joint_name.c_str());
+      }
       else
       {
         RCLCPP_ERROR(get_logger(),
                      "Tendon actuator '%s' has no matching joint. Tendon actuators must be named the same as a joint "
-                     "that they will control.",
+                     "that they will control, or drive a named fixed tendon.",
                      act_name);
         return false;
       }
@@ -1689,9 +1785,12 @@ bool MujocoSystemInterface::register_mujoco_actuators()
       return false;
     }
     actuator_data.mj_actuator_id = i;
-    actuator_data.mj_pos_adr = simulation_->model()->jnt_qposadr[target_id];
-    actuator_data.mj_vel_adr = simulation_->model()->jnt_dofadr[target_id];
-    actuator_data.mj_joint_type = simulation_->model()->jnt_type[target_id];
+    if (actuator_data.mj_tendon_id == -1)
+    {
+      actuator_data.mj_pos_adr = simulation_->model()->jnt_qposadr[target_id];
+      actuator_data.mj_vel_adr = simulation_->model()->jnt_dofadr[target_id];
+      actuator_data.mj_joint_type = simulation_->model()->jnt_type[target_id];
+    }
     actuator_data.actuator_type = getActuatorType(simulation_->model(), actuator_data.mj_actuator_id);
 
     // Initialize PID controllers for actuators that have them configured
@@ -1794,8 +1893,10 @@ bool MujocoSystemInterface::register_mujoco_actuators()
 
     for (auto& actuator_data : mujoco_actuator_data_)
     {
-      actuator_data.position_interface.state_ = simulation_->data()->qpos[actuator_data.mj_pos_adr];
-      actuator_data.velocity_interface.state_ = simulation_->data()->qvel[actuator_data.mj_vel_adr];
+      actuator_data.position_interface.state_ =
+          get_actuator_position(simulation_->model(), actuator_data, simulation_->data()->qpos);
+      actuator_data.velocity_interface.state_ =
+          get_actuator_velocity(simulation_->model(), actuator_data, simulation_->data()->qvel);
       // We never set data for effort from an initial conditions file
       actuator_data.effort_interface.state_ = 0.0;
 
@@ -2654,7 +2755,11 @@ void MujocoSystemInterface::set_initial_pose()
     // leave it to the MuJoCo model's default initial position.
     if (std::isfinite(actuator.position_interface.state_))
     {
-      simulation_->data()->qpos[actuator.mj_pos_adr] = actuator.position_interface.state_;
+      // A tendon has no coordinate of its own: its joints are set through their own entries
+      if (actuator.mj_tendon_id == -1)
+      {
+        simulation_->data()->qpos[actuator.mj_pos_adr] = actuator.position_interface.state_;
+      }
     }
     else
     {
@@ -2691,8 +2796,10 @@ void MujocoSystemInterface::reset_simulation_state(bool /*fill_initial_state*/)
   // Reset command interfaces to initial position commands
   for (auto& actuator : mujoco_actuator_data_)
   {
-    actuator.position_interface.state_ = simulation_->data()->qpos[actuator.mj_pos_adr];
-    actuator.velocity_interface.state_ = simulation_->data()->qvel[actuator.mj_vel_adr];
+    actuator.position_interface.state_ =
+        get_actuator_position(simulation_->model(), actuator, simulation_->data()->qpos);
+    actuator.velocity_interface.state_ =
+        get_actuator_velocity(simulation_->model(), actuator, simulation_->data()->qvel);
     actuator.effort_interface.state_ = 0.0;
 
     // Reset PID internal state
