@@ -1421,6 +1421,7 @@ void MujocoSimulation::publish_control_state()
   control_state_.qvel.assign(mj_data_->qvel, mj_data_->qvel + mj_model_->nv);
   control_state_.act.assign(mj_data_->act, mj_data_->act + mj_model_->na);
   control_state_.qfrc_actuator.assign(mj_data_->qfrc_actuator, mj_data_->qfrc_actuator + mj_model_->nv);
+  control_state_.actuator_force.assign(mj_data_->actuator_force, mj_data_->actuator_force + mj_model_->nu);
   control_state_.sensordata.assign(mj_data_->sensordata, mj_data_->sensordata + mj_model_->nsensordata);
   control_state_.ctrl.assign(mj_data_->ctrl, mj_data_->ctrl + mj_model_->nu);
 }

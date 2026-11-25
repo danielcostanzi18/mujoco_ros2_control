@@ -201,6 +201,31 @@ For example, from the test robot:
 The tendon name matches the controllable joint in the ``ros2_control`` configuration.
 The drivers expose control and state for that single joint, while the simulation enforces the mimic constraint internally.
 
+An actuator on a fixed tendon whose name matches no joint goes by the tendon's name instead.
+Its state is the tendon's: the length and velocity of the tendon, and the force the actuator applies along it.
+Such an actuator can be the actuator of a ``ros2_control`` transmission, for example the two motors of a differential:
+
+.. code-block:: xml
+
+   <tendon>
+     <fixed name="waist_1_actuator">
+       <joint joint="waist_roll_joint" coef="-1"/>
+       <joint joint="waist_yaw_joint" coef="1.5"/>
+     </fixed>
+     <fixed name="waist_2_actuator">
+       <joint joint="waist_roll_joint" coef="-1"/>
+       <joint joint="waist_yaw_joint" coef="-1.5"/>
+     </fixed>
+   </tendon>
+   <actuator>
+     <motor tendon="waist_1_actuator" name="waist_1_motor"/>
+     <motor tendon="waist_2_actuator" name="waist_2_motor"/>
+   </actuator>
+
+with a ``transmission_interface/DifferentialTransmission`` from ``waist_1_actuator`` and ``waist_2_actuator`` to the two joints
+(joint reductions -1 and 1.5).
+The joints get their state from the motors through the transmission, and their commands reach the motors through it.
+
 Sensors
 -------
 
